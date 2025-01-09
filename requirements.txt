@@ -1,0 +1,5 @@
+# https://github.com/facebookresearch/detectron2/discussions/5200
+
+--extra-index-url https://miropsota.github.io/torch_packages_builder
+
+detectron2==0.6+2a420edpt2.5.1cu124
