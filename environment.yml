@@ -145,7 +145,6 @@ dependencies:
       - fonttools==4.54.1
       - kiwisolver==1.4.7
       - matplotlib==3.9.2
-      - mediapipe==0.10.14
       - pycocotools==2.0.8
       - pyparsing==3.2.0
       - python-dateutil==2.9.0.post0
