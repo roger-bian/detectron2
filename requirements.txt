@@ -3,3 +3,7 @@
 --extra-index-url https://miropsota.github.io/torch_packages_builder
 
 detectron2==0.6+2a420edpt2.5.1cu124
+torch==2.8.0
+torchvision==0.23.0
+notebook
+matplotlib
