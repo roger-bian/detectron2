@@ -2,8 +2,9 @@
 
 --extra-index-url https://miropsota.github.io/torch_packages_builder
 
-detectron2==0.6+2a420edpt2.5.1cu124
+detectron2==0.6+18f6958pt2.8.0cu128
 torch==2.8.0
 torchvision==0.23.0
-notebook
-matplotlib
+matplotlib==3.9.2
+notebook==7.4.5
+opencv-python==4.12.0.88
