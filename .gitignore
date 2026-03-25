@@ -1,7 +1,8 @@
 .DS_Store
 .python-version
 
-model
+_data
+_model
 output
 
 *.png
