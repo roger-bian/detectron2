@@ -1,8 +1,10 @@
 .DS_Store
 .python-version
+__pycache__
 
-_data
-_model
-output
+_data/*
+!_data/.gitkeep
+_model/*
+!_model/.gitkeep
 
 *.png
