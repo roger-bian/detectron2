@@ -8,11 +8,11 @@ import torch
 from detectron2.engine import DefaultTrainer
 from detectron2.evaluation import COCOEvaluator
 from detectron2.engine.hooks import HookBase
-from detectron2.utils.logger import log_every_n_seconds, setup_logger
+from detectron2.utils.logger import log_every_n_seconds
 from detectron2.data import DatasetMapper, build_detection_test_loader
 import detectron2.utils.comm as comm
 
-logger = setup_logger()
+logger = logging.getLogger("detectron2")
 
 class LossEvalHook(HookBase):
     def __init__(self, eval_period, model, data_loader):
@@ -154,6 +154,7 @@ class MetricEarlyStoppingHook(HookBase):
 
         self.best_value = -math.inf
         self.bad_epochs = 0
+        self.stopped = False
 
     def after_step(self):
         next_iter = self.trainer.iter + 1
@@ -194,12 +195,16 @@ class MetricEarlyStoppingHook(HookBase):
                 f"Bad epochs: {self.bad_epochs}/{self.patience}"
             )
 
-        if self.bad_epochs >= self.patience:
+        if self.bad_epochs >= self.patience and not self.stopped:
+            self.stopped = True
+            
             logger.info(
                 f"[EarlyStopping] STOPPING TRAINING. "
                 f"Best {self.metric_name}: {self.best_value:.4f}"
             )
-            self.trainer.iter = self.trainer.max_iter
+
+            inner_trainer = self.trainer._trainer
+            inner_trainer.iter = self.trainer.max_iter
 
 
 class MyTrainer(DefaultTrainer):

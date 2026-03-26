@@ -4,6 +4,7 @@ from detectron2.config import get_cfg
 from detectron2.data import DatasetCatalog
 from detectron2.data.datasets import register_coco_instances
 from detectron2 import model_zoo
+from detectron2.utils.logger import setup_logger
 
 from src.trainer import MyTrainer
 
@@ -67,6 +68,9 @@ if __name__ == '__main__':
     # Output directory to save model weights
     cfg.OUTPUT_DIR = output_dir
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=False)
+
+    # setup logger
+    setup_logger(output=cfg.OUTPUT_DIR)
 
     # save config.yaml
     config_save_path = os.path.join(cfg.OUTPUT_DIR, "config.yaml")
