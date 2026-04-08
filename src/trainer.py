@@ -9,6 +9,7 @@ from detectron2.engine import DefaultTrainer
 from detectron2.evaluation import COCOEvaluator
 from detectron2.engine.hooks import HookBase
 from detectron2.utils.logger import log_every_n_seconds
+from detectron2.utils.events import EventStorage
 from detectron2.data import DatasetMapper, build_detection_test_loader
 import detectron2.utils.comm as comm
 
@@ -75,102 +76,39 @@ class LossEvalHook(HookBase):
         self.trainer.storage.put_scalars(timetest=12)
 
 
-class BestCheckpointSaver(HookBase):
+class BestCheckpointAndEarlyStopHook(HookBase):
     def __init__(
         self,
         metric_name,
-        min_delta=0.0,
         eval_period=0,
-        file_prefix="model_best"
-    ):
-        """
-        Args:
-            metric_name (str): e.g. "segm/AP"
-            min_delta (float): minimum improvement to save a new best
-            eval_period (int): must match cfg.TEST.EVAL_PERIOD
-            file_prefix (str): checkpoint file name prefix
-        """
-        self.metric_name = metric_name
-        self.min_delta = min_delta
-        self.eval_period = eval_period
-        self.file_prefix = file_prefix
-
-        self.best_metric = -math.inf
-
-    def after_step(self):
-        next_iter = self.trainer.iter + 1
-
-        if self.eval_period <= 0:
-            return
-
-        is_eval_step = (
-            next_iter % self.eval_period == 0
-            or next_iter == self.trainer.max_iter
-        )
-
-        if not is_eval_step:
-            return
-
-        storage = self.trainer.storage
-        if self.metric_name not in storage.histories():
-            return
-        
-        history = storage.history(self.metric_name)
-        if not history.values():
-            return
-
-        current_metric = history.latest()
-
-        if current_metric > self.best_metric + self.min_delta:
-            self.best_metric = current_metric
-
-            logger.info(
-                f"[BestCheckpointSaver] New best {self.metric_name}: "
-                f"{current_metric:.4f}. Saving checkpoint."
-            )
-
-            self.trainer.checkpointer.save(self.file_prefix)
-
-
-class MetricEarlyStoppingHook(HookBase):
-    def __init__(
-        self,
-        metric_name,
         patience=5,
         min_delta=0.0,
-        eval_period=0,
+        file_prefix="model_best",
     ):
-        """
-        Args:
-            metric_name (str): e.g. "segm/AP"
-            patience (int): number of evals without improvement before stopping
-            min_delta (float): minimum improvement to reset patience
-            eval_period (int): must match cfg.TEST.EVAL_PERIOD
-        """
         self.metric_name = metric_name
+        self.eval_period = eval_period
         self.patience = patience
         self.min_delta = min_delta
-        self.eval_period = eval_period
+        self.file_prefix = file_prefix
 
         self.best_value = -math.inf
         self.bad_epochs = 0
-        self.stopped = False
 
     def after_step(self):
-        next_iter = self.trainer.iter + 1
+        trainer = self.trainer
+        next_iter = trainer.iter + 1
 
         if self.eval_period <= 0:
             return
 
         is_eval_step = (
             next_iter % self.eval_period == 0
-            or next_iter == self.trainer.max_iter
+            or next_iter == trainer.max_iter
         )
-
         if not is_eval_step:
             return
 
-        storage = self.trainer.storage
+        storage = trainer.storage
         if self.metric_name not in storage.histories():
             return
 
@@ -178,70 +116,107 @@ class MetricEarlyStoppingHook(HookBase):
         if not history.values():
             return
 
-        current_value = history.latest()
+        current = history.latest()
 
-        if current_value > self.best_value + self.min_delta:
-            self.best_value = current_value
+        if current > self.best_value + self.min_delta:
+            self.best_value = current
             self.bad_epochs = 0
+
             logger.info(
-                f"[EarlyStopping] {self.metric_name} improved to "
-                f"{current_value:.4f}"
+                f"[Best+EarlyStop] New best {self.metric_name}: {current:.4f}"
             )
+            
+            trainer.checkpointer.save(self.file_prefix)
+            logger.info(
+                f"[Best+EarlyStop] New best checkpoint saved: {self.file_prefix}.pth"
+            )
+
         else:
             self.bad_epochs += 1
             logger.info(
-                f"[EarlyStopping] {self.metric_name} did not improve "
-                f"({current_value:.4f} vs best {self.best_value:.4f}). "
-                f"Bad epochs: {self.bad_epochs}/{self.patience}"
+                f"[Best+EarlyStop] No improvement "
+                f"({self.bad_epochs}/{self.patience})"
             )
 
-        if self.bad_epochs >= self.patience and not self.stopped:
-            self.stopped = True
-            
+        if self.bad_epochs >= self.patience:
             logger.info(
-                f"[EarlyStopping] STOPPING TRAINING. "
+                f"[Best+EarlyStop] EARLY STOPPING triggered. "
                 f"Best {self.metric_name}: {self.best_value:.4f}"
             )
-
-            inner_trainer = self.trainer._trainer
-            inner_trainer.iter = self.trainer.max_iter
+            trainer.should_stop = True
 
 
 class MyTrainer(DefaultTrainer):
+    def train(self):
+        self.should_stop = False  # <-- EARLY STOP FLAG
+
+        logger.info(
+            f"Starting training from iteration {self.start_iter}"
+        )
+
+        self.iter = self.start_iter
+        self.max_iter = self.cfg.SOLVER.MAX_ITER
+
+        with EventStorage(self.start_iter) as self.storage:
+            self.before_train()
+
+            for self.iter in range(self.start_iter, self.max_iter):
+                if self.should_stop:
+                    logger.info(
+                        f"Early stopping at iter {self.iter}"
+                    )
+                    break
+
+                self.before_step()
+                self.run_step()
+                self.after_step()
+
+            # important: match TrainerBase semantics
+            self.iter += 1
+            self.after_train()
+
+        if (
+            len(self.cfg.TEST.EXPECTED_RESULTS)
+            and comm.is_main_process()
+        ):
+            self._last_eval_results = getattr(self, "_last_eval_results", None)
+            return self._last_eval_results
+    
+
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         return COCOEvaluator(dataset_name, cfg, True, output_folder)
     
+    
     def build_hooks(self):
         hooks = super().build_hooks()
         
         # validation loss hook
-        hooks.insert(-1,LossEvalHook(
-            eval_period=self.cfg.TEST.EVAL_PERIOD,
-            model=self.model,
-            data_loader=build_detection_test_loader(
-                self.cfg,
-                self.cfg.DATASETS.TEST[0],
-                DatasetMapper(self.cfg, True)
+        hooks.insert(
+            -1,
+            LossEvalHook(
+                eval_period=self.cfg.TEST.EVAL_PERIOD,
+                model=self.model,
+                data_loader=build_detection_test_loader(
+                    self.cfg,
+                    self.cfg.DATASETS.TEST[0],
+                    DatasetMapper(self.cfg, True)
+                )
             )
-        ))
+        )
 
         # best model based on segmentation AP
-        hooks.insert(-1, BestCheckpointSaver(
-            metric_name="segm/AP",      # bbox/AP, segm/AP
-            min_delta=0.002,            # ~0.2 AP
-            eval_period=self.cfg.TEST.EVAL_PERIOD,
-            file_prefix="model_best"
-        ))
-
-        # metric-based early stopping
-        hooks.insert(-1, MetricEarlyStoppingHook(
-            metric_name="segm/AP",      # bbox/AP, segm/AP
-            patience=6,                 # good default for noisy metrics
-            min_delta=0.002,            # ~0.2 AP
-            eval_period=self.cfg.TEST.EVAL_PERIOD
-        ))
+        hooks.insert(
+            -1,
+            BestCheckpointAndEarlyStopHook(
+                metric_name="segm/AP",      # bbox/AP, segm/AP
+                eval_period=self.cfg.TEST.EVAL_PERIOD,
+                patience=6,
+                min_delta=0.002,
+                file_prefix="model_best"
+            )
+        )
 
         return hooks
