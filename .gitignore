@@ -5,7 +5,7 @@ __pycache__
 _data/*
 !_data/.gitkeep
 !_data/README.md
-!_data/_{dataset_name}
+!_data/_{dataset_name}_example
 _model/*
 !_model/.gitkeep
 
