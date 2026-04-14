@@ -17,15 +17,15 @@ Leave the first `__ignore__` label as-is.
 
 
 python ./labelme2coco/labelme2coco.py \
-  {input_folder} \
-  {output_folder} \
+  --input_dir {input_folder} \
+  --output_dir {output_folder} \
   --labels labelme2coco/labels.txt
 ```
 
 #### Example
 ```
 python ./labelme2coco/labelme2coco.py \
-  ./_data/screw/labelme/train \
-  ./_data/screw/coco/train_v1 \
+  --input_dir ./_data/screw/labelme/train \
+  --output_dir ./_data/screw/coco/train_v1 \
   --labels labelme2coco/labels.txt
 ```

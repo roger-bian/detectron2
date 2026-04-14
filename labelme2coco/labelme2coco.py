@@ -26,8 +26,8 @@ def main():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("input_dir", help="input annotated directory")
-    parser.add_argument("output_dir", help="output dataset directory")
+    parser.add_argument("--input_dir", help="input annotated directory", required=True)
+    parser.add_argument("--output_dir", help="output dataset directory", required=True)
     parser.add_argument("--labels", help="labels file", required=True)
     parser.add_argument("--noviz", help="no visualization", action="store_true")
     args = parser.parse_args()
