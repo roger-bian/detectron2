@@ -5,6 +5,11 @@ conda activate labelme
 pip install labelme
 ```
 
+### Update `labels.txt`
+Update `labels.txt` to include all labels.
+Leave the first `__ignore__` label as-is.
+
+
 ### Convert command
 ```
 # It generates:
