@@ -29,20 +29,32 @@ CONFIG_FILE = "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
 ### Start training
 #### When pulling pre-trained config file from detectron2 model zoo:
 ```
-python train.py --version {version} --dataset_name {dataset_name}
+python train.py \
+  --version {version} \
+  --dataset_name {dataset_name}
 ```
 
 Example:
 ```
-python train.py --version v1 --dataset_name screw
+python train.py \
+  --version v1 \
+  --dataset_name screw
 ```
 
 #### When continuing with your own pre-trained weights:
 ```
-python train.py --version {version} --dataset_name {dataset_name} --config {config_file} --weights {weights}
+python train.py \
+  --version {version} \
+  --dataset_name {dataset_name} \
+  --config {config_file} \
+  --weights {weights}
 ```
 
 Example:
 ```
-python train.py --version v1 --dataset_name screw --config _model/screw/v1/config.yaml --weights _model/screw/v1/model_best.pth
+python train.py \
+  --version v1 \
+  --dataset_name screw \
+  --config _model/screw/v1/config.yaml \
+  --weights _model/screw/v1/model_best.pth
 ```
