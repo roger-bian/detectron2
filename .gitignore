@@ -4,6 +4,7 @@ __pycache__
 
 _data/*
 !_data/.gitkeep
+!_data/_template
 _model/*
 !_model/.gitkeep
 
