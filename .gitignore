@@ -8,5 +8,7 @@ _data/*
 !_data/_{dataset_name}_example
 _model/*
 !_model/.gitkeep
+_output/*
+!_output/.gitkeep
 
 *.png

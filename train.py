@@ -26,13 +26,13 @@ def main(args):
     register_coco_instances(
         f"{args.dataset_name}_train",
         {},
-        f"{dataset_train}/annotations.json",
+        f"{dataset_train}/annotations_png.json",
         dataset_train
     )
     register_coco_instances(
         f"{args.dataset_name}_val",
         {},
-        f"{dataset_valid}/annotations.json",
+        f"{dataset_valid}/annotations_png.json",
         dataset_valid
     )
     dataset = DatasetCatalog.get(f"{args.dataset_name}_train")
@@ -70,11 +70,14 @@ def main(args):
     cfg.SOLVER.IMS_PER_BATCH = BATCH_SIZE
     cfg.SOLVER.BASE_LR = 0.00025  # Learning rate
     cfg.SOLVER.MAX_ITER = NUM_ITERATIONS  # Adjust as needed
-    cfg.SOLVER.STEPS = []  # Learning rate decay
+    cfg.SOLVER.STEPS = [4800]  # Learning rate decay
     cfg.SOLVER.CHECKPOINT_PERIOD = CHECKPOINT_PERIOD # save checkpoint after this number of iterations
     cfg.MODEL.ROI_HEADS.BATCH_SIZE_PER_IMAGE = 128
     cfg.MODEL.ROI_HEADS.NUM_CLASSES = NUM_CLASSES  # Replace with your number of classes
     
+    cfg.INPUT.CROP.ENABLED = True
+    cfg.INPUT.CROP.TYPE = "relative"
+    cfg.INPUT.CROP.SIZE = [0.7, 0.7]
 
     # Output directory to save model weights
     cfg.OUTPUT_DIR = f"_model/{args.dataset_name}/{args.version}"
