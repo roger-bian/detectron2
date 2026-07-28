@@ -10,5 +10,7 @@ _model/*
 !_model/.gitkeep
 _output/*
 !_output/.gitkeep
+_input/*
+!_input/.gitkeep
 
 *.png
