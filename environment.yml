@@ -13,4 +13,5 @@ dependencies:
       - notebook==7.4.5
       - opencv-python==4.12.0.88
       - labelme==5.11.4
+      - tqdm==4.68.4
 prefix: C:\Users\roger\anaconda3\envs\detectron2

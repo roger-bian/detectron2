@@ -1,10 +1,10 @@
 import os
-import time
 import datetime
 import argparse
 
 import cv2
 import torch
+from tqdm import tqdm
 
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
@@ -92,11 +92,14 @@ def process_stream(cap, predictor, metadata, output_path, show):
     if not fps or fps <= 0:
         fps = 30
 
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        total_frames = None
+
     fourcc = cv2.VideoWriter.fourcc(*"mp4v")
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    frame_count = 0
-    start_time = time.time()
+    progress = tqdm(total=total_frames, desc=os.path.basename(output_path), unit="frame")
     try:
         while True:
             ret, frame = cap.read()
@@ -117,11 +120,9 @@ def process_stream(cap, predictor, metadata, output_path, show):
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
 
-            frame_count += 1
-            if frame_count % 30 == 0:
-                elapsed = time.time() - start_time
-                print(f"Processed {frame_count} frames ({frame_count / elapsed:.2f} FPS)")
+            progress.update(1)
     finally:
+        progress.close()
         cap.release()
         writer.release()
         if show:
@@ -159,7 +160,7 @@ def run_on_path(path, predictor, metadata, output_dir, timestamp, show):
 
     if os.path.isdir(path):
         entries = sorted(os.listdir(path))
-        for entry in entries:
+        for entry in tqdm(entries, desc="Processing files", unit="file"):
             entry_path = os.path.join(path, entry)
             if not os.path.isfile(entry_path):
                 continue
