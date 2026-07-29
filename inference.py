@@ -41,6 +41,13 @@ def setup_cfg(args):
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = weights
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.score_thresh
+    if args.class_names and len(args.class_names) != cfg.MODEL.ROI_HEADS.NUM_CLASSES:
+        print(
+            f"Overriding MODEL.ROI_HEADS.NUM_CLASSES: "
+            f"{cfg.MODEL.ROI_HEADS.NUM_CLASSES} -> {len(args.class_names)} "
+            f"(to match --class_names)"
+        )
+        cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(args.class_names)
     if args.cpu or not torch.cuda.is_available():
         cfg.MODEL.DEVICE = "cpu"
     cfg.freeze()
