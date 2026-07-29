@@ -85,7 +85,9 @@ def process_image(image_path, predictor, metadata, output_path, show):
     cv2.imwrite(output_path, result_image)
 
     if show:
-        cv2.imshow("Detectron2 Inference (press any key to continue)", result_image)
+        window_name = "Detectron2 Inference (press any key to continue)"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.imshow(window_name, result_image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
@@ -106,6 +108,10 @@ def process_stream(cap, predictor, metadata, output_path, show):
     fourcc = cv2.VideoWriter.fourcc(*"mp4v")
     writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
+    window_name = "Detectron2 Inference (press 'q' to quit)"
+    if show:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
     progress = tqdm(total=total_frames, desc=os.path.basename(output_path), unit="frame")
     try:
         while True:
@@ -123,7 +129,7 @@ def process_stream(cap, predictor, metadata, output_path, show):
             writer.write(result_frame)
 
             if show:
-                cv2.imshow("Detectron2 Inference (press 'q' to quit)", result_frame)
+                cv2.imshow(window_name, result_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
 
