@@ -42,6 +42,10 @@ def setup_cfg(args):
     cfg.MODEL.WEIGHTS = weights
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.score_thresh
     cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = args.nms_thresh
+    if args.min_size_test is not None:
+        cfg.INPUT.MIN_SIZE_TEST = args.min_size_test
+    if args.max_size_test is not None:
+        cfg.INPUT.MAX_SIZE_TEST = args.max_size_test
     if args.class_names and len(args.class_names) != cfg.MODEL.ROI_HEADS.NUM_CLASSES:
         print(
             f"Overriding MODEL.ROI_HEADS.NUM_CLASSES: "
@@ -270,6 +274,20 @@ def parse_arguments():
         help="Non-maximum suppression IoU threshold; overlapping boxes above this are "
              "merged/suppressed. Lower = stricter (fewer overlapping boxes kept), "
              "higher = more permissive (default: 0.5)"
+    )
+    parser.add_argument(
+        "--min_size_test",
+        type=int,
+        default=None,
+        help="Size of the shortest image side used at test time (INPUT.MIN_SIZE_TEST). "
+             "Defaults to the value from --config."
+    )
+    parser.add_argument(
+        "--max_size_test",
+        type=int,
+        default=None,
+        help="Maximum size of the longest image side used at test time (INPUT.MAX_SIZE_TEST). "
+             "Defaults to the value from --config."
     )
     parser.add_argument(
         "--class_names",

@@ -80,6 +80,10 @@ is not saved).
 --nms_thresh: non-maximum suppression IoU threshold; overlapping boxes above this are
               merged/suppressed. Lower = stricter (fewer overlapping boxes kept),
               higher = more permissive (default: 0.5)
+--min_size_test: size of the shortest image side used at test time (INPUT.MIN_SIZE_TEST).
+                 Defaults to the value from --config.
+--max_size_test: maximum size of the longest image side used at test time
+                 (INPUT.MAX_SIZE_TEST). Defaults to the value from --config.
 --class_names: class names in label order, used to annotate detections and to infer
                NUM_CLASSES when using a model zoo config with custom-trained weights.
                Not needed when using default COCO-pretrained weights.
