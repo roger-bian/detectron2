@@ -58,3 +58,51 @@ python train.py \
   --config _model/screw/v1/config.yaml \
   --weights _model/screw/v1/model_best.pth
 ```
+
+## Inference
+
+Run a trained model on an image/video file, a directory of images/videos, or a live
+webcam feed. Annotated output is saved to `_output` (webcam feed is preview-only and
+is not saved).
+
+### Arguments
+
+```
+--config: path to a local config.yaml from a previously trained model, or a detectron2
+          model zoo config name (e.g. COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml)
+--weights: path to model weights. Required when --config is a local config.yaml.
+           When --config is a model zoo name, defaults to that backbone's pretrained
+           COCO weights, or can point to a locally trained .pth using that architecture.
+--webcam: run live detection on a webcam (optionally pass a camera index, default: 0)
+--path: path to an input image/video file, or a directory of images/videos
+--output_dir: directory to save annotated output (default: _output)
+--score_thresh: minimum score threshold for detections (default: 0.5)
+--nms_thresh: non-maximum suppression IoU threshold; overlapping boxes above this are
+              merged/suppressed. Lower = stricter (fewer overlapping boxes kept),
+              higher = more permissive (default: 0.5)
+--class_names: class names in label order, used to annotate detections and to infer
+               NUM_CLASSES when using a model zoo config with custom-trained weights.
+               Not needed when using default COCO-pretrained weights.
+--no_display: do not show a live preview window while processing
+--cpu: force inference on CPU even if a GPU is available
+```
+
+Exactly one of `--webcam` or `--path` is required.
+
+### Run on an image, video, or directory
+```
+python inference.py \
+  --config _model/screw/v1/config.yaml \
+  --weights _model/screw/v1/model_best.pth \
+  --path _input \
+  --class_names screw
+```
+
+### Run on a webcam
+```
+python inference.py \
+  --config _model/screw/v1/config.yaml \
+  --weights _model/screw/v1/model_best.pth \
+  --webcam \
+  --class_names screw
+```
