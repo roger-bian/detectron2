@@ -95,24 +95,27 @@ def process_image(image_path, predictor, metadata, output_path, show):
 
 
 def process_stream(cap, predictor, metadata, output_path, show):
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if not fps or fps <= 0:
-        fps = 30
+    writer = None
+    if output_path is not None:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0:
+            fps = 30
+
+        fourcc = cv2.VideoWriter.fourcc(*"mp4v")
+        writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if total_frames <= 0:
         total_frames = None
 
-    fourcc = cv2.VideoWriter.fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
     window_name = "Detectron2 Inference (press 'q' to quit)"
     if show:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-    progress = tqdm(total=total_frames, desc=os.path.basename(output_path), unit="frame")
+    progress_desc = os.path.basename(output_path) if output_path is not None else "webcam"
+    progress = tqdm(total=total_frames, desc=progress_desc, unit="frame")
     try:
         while True:
             ret, frame = cap.read()
@@ -126,7 +129,8 @@ def process_stream(cap, predictor, metadata, output_path, show):
             out = visualizer.draw_instance_predictions(instances)
             result_frame = out.get_image()[:, :, ::-1]
 
-            writer.write(result_frame)
+            if writer is not None:
+                writer.write(result_frame)
 
             if show:
                 cv2.imshow(window_name, result_frame)
@@ -137,11 +141,13 @@ def process_stream(cap, predictor, metadata, output_path, show):
     finally:
         progress.close()
         cap.release()
-        writer.release()
+        if writer is not None:
+            writer.release()
         if show:
             cv2.destroyAllWindows()
 
-    print(f"Saved output video to: {output_path}")
+    if output_path is not None:
+        print(f"Saved output video to: {output_path}")
 
 
 def run_on_video_file(video_path, predictor, metadata, output_dir, timestamp, show):
@@ -199,8 +205,7 @@ def main(args):
         cap = cv2.VideoCapture(args.webcam)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam index {args.webcam}")
-        output_path = os.path.join(args.output_dir, f"webcam_{timestamp}.mp4")
-        process_stream(cap, predictor, metadata, output_path, show=not args.no_display)
+        process_stream(cap, predictor, metadata, output_path=None, show=not args.no_display)
     else:
         run_on_path(args.path, predictor, metadata, args.output_dir, timestamp, show=not args.no_display)
 
