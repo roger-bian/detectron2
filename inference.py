@@ -41,6 +41,7 @@ def setup_cfg(args):
     cfg.merge_from_file(config_file)
     cfg.MODEL.WEIGHTS = weights
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = args.score_thresh
+    cfg.MODEL.ROI_HEADS.NMS_THRESH_TEST = args.nms_thresh
     if args.class_names and len(args.class_names) != cfg.MODEL.ROI_HEADS.NUM_CLASSES:
         print(
             f"Overriding MODEL.ROI_HEADS.NUM_CLASSES: "
@@ -261,6 +262,14 @@ def parse_arguments():
         type=float,
         default=0.5,
         help="Minimum score threshold for detections (default: 0.5)"
+    )
+    parser.add_argument(
+        "--nms_thresh",
+        type=float,
+        default=0.5,
+        help="Non-maximum suppression IoU threshold; overlapping boxes above this are "
+             "merged/suppressed. Lower = stricter (fewer overlapping boxes kept), "
+             "higher = more permissive (default: 0.5)"
     )
     parser.add_argument(
         "--class_names",
