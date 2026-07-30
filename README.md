@@ -90,6 +90,11 @@ is not saved).
 --color: draw all detections in a single fixed RGB color (0-255 each), e.g. --color 0 255 0,
          instead of random per-instance colors. Avoids the flickering/strobing effect random
          colors cause on video output.
+--mask_alpha: opacity of the mask fill when --color is set (0-1, default: 0.8). Has no effect
+              without --color.
+--box_color: draw all bounding boxes in a single fixed RGB color (0-255 each), separate from
+             --color (which colors masks/labels), e.g. --box_color 255 255 255 so the box
+             outline stands out against the mask fill.
 --no_display: do not show a live preview window while processing
 --cpu: force inference on CPU even if a GPU is available
 ```

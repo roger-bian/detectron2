@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
-from detectron2.utils.visualizer import Visualizer, ColorMode
-from detectron2.data import MetadataCatalog, Metadata
+from detectron2.utils.visualizer import Visualizer, _create_text_labels
+from detectron2.data import MetadataCatalog
 from detectron2 import model_zoo
 
 
@@ -70,23 +70,31 @@ def get_metadata(args, cfg, used_default_weights):
     return None
 
 
-def apply_single_color(metadata, num_classes, color):
-    # Metadata objects registered in MetadataCatalog forbid overwriting an
-    # already-set attribute (e.g. COCO metadata ships with its own thing_colors),
-    # so build a fresh, unregistered Metadata instead of mutating a shared one.
-    single_color_metadata = Metadata()
-    thing_classes = metadata.get("thing_classes", None) if metadata is not None else None
-    if thing_classes is not None:
-        single_color_metadata.thing_classes = thing_classes
-    single_color_metadata.thing_colors = [tuple(color)] * max(num_classes, 1)
-    return single_color_metadata
+def draw_single_color_instances(visualizer, predictions, mask_color, mask_alpha, box_color):
+    num_instances = len(predictions)
+    if num_instances == 0:
+        return visualizer.output
+
+    boxes = predictions.pred_boxes if predictions.has("pred_boxes") else None
+    scores = predictions.scores if predictions.has("scores") else None
+    classes = predictions.pred_classes.tolist() if predictions.has("pred_classes") else None
+    labels = _create_text_labels(classes, scores, visualizer.metadata.get("thing_classes", None))
+    masks = predictions.pred_masks.numpy() if predictions.has("pred_masks") else None
+
+    if masks is not None:
+        visualizer.overlay_instances(masks=masks, assigned_colors=[mask_color] * num_instances, alpha=mask_alpha)
+    if boxes is not None:
+        edge_color = box_color if box_color is not None else mask_color
+        visualizer.overlay_instances(boxes=boxes, labels=labels, assigned_colors=[edge_color] * num_instances)
+
+    return visualizer.output
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
 
 
-def process_image(image_path, predictor, metadata, output_path, show, instance_mode=ColorMode.IMAGE, jittering=True):
+def process_image(image_path, predictor, metadata, output_path, show, color=None, mask_alpha=0.8, box_color=None):
     image = cv2.imread(image_path)
     if image is None:
         print(f"Skipping unreadable image: {image_path}")
@@ -95,8 +103,13 @@ def process_image(image_path, predictor, metadata, output_path, show, instance_m
     outputs = predictor(image)
     instances = outputs["instances"].to("cpu")
 
-    visualizer = Visualizer(image[:, :, ::-1], metadata=metadata, scale=1, instance_mode=instance_mode)
-    out = visualizer.draw_instance_predictions(instances, jittering=jittering)
+    visualizer = Visualizer(image[:, :, ::-1], metadata=metadata, scale=1)
+    if color is not None:
+        out = draw_single_color_instances(visualizer, instances, color, mask_alpha, box_color)
+    else:
+        out = visualizer.draw_instance_predictions(instances)
+        if box_color is not None and instances.has("pred_boxes") and len(instances) > 0:
+            out = visualizer.overlay_instances(boxes=instances.pred_boxes, assigned_colors=[box_color] * len(instances))
     result_image = out.get_image()[:, :, ::-1]
 
     cv2.imwrite(output_path, result_image)
@@ -111,7 +124,7 @@ def process_image(image_path, predictor, metadata, output_path, show, instance_m
     print(f"Saved output image to: {output_path}")
 
 
-def process_stream(cap, predictor, metadata, output_path, show, instance_mode=ColorMode.IMAGE, jittering=True):
+def process_stream(cap, predictor, metadata, output_path, show, color=None, mask_alpha=0.8, box_color=None):
     writer = None
     if output_path is not None:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -142,8 +155,13 @@ def process_stream(cap, predictor, metadata, output_path, show, instance_mode=Co
             outputs = predictor(frame)
             instances = outputs["instances"].to("cpu")
 
-            visualizer = Visualizer(frame[:, :, ::-1], metadata=metadata, scale=1, instance_mode=instance_mode)
-            out = visualizer.draw_instance_predictions(instances, jittering=jittering)
+            visualizer = Visualizer(frame[:, :, ::-1], metadata=metadata, scale=1)
+            if color is not None:
+                out = draw_single_color_instances(visualizer, instances, color, mask_alpha, box_color)
+            else:
+                out = visualizer.draw_instance_predictions(instances)
+                if box_color is not None and instances.has("pred_boxes") and len(instances) > 0:
+                    out = visualizer.overlay_instances(boxes=instances.pred_boxes, assigned_colors=[box_color] * len(instances))
             result_frame = out.get_image()[:, :, ::-1]
 
             if writer is not None:
@@ -167,29 +185,35 @@ def process_stream(cap, predictor, metadata, output_path, show, instance_mode=Co
         print(f"Saved output video to: {output_path}")
 
 
-def run_on_video_file(video_path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
+def run_on_video_file(video_path, predictor, metadata, output_dir, timestamp, show, color=None, mask_alpha=0.8, box_color=None):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video file: {video_path}")
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     output_path = os.path.join(output_dir, f"{video_name}_{timestamp}.mp4")
-    process_stream(cap, predictor, metadata, output_path, show=show, instance_mode=instance_mode, jittering=jittering)
+    process_stream(
+        cap, predictor, metadata, output_path, show=show,
+        color=color, mask_alpha=mask_alpha, box_color=box_color,
+    )
 
 
-def run_on_image_file(image_path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
+def run_on_image_file(image_path, predictor, metadata, output_dir, timestamp, show, color=None, mask_alpha=0.8, box_color=None):
     image_name = os.path.splitext(os.path.basename(image_path))[0]
     ext = os.path.splitext(image_path)[1]
     output_path = os.path.join(output_dir, f"{image_name}_{timestamp}{ext}")
-    process_image(image_path, predictor, metadata, output_path, show=show, instance_mode=instance_mode, jittering=jittering)
+    process_image(
+        image_path, predictor, metadata, output_path, show=show,
+        color=color, mask_alpha=mask_alpha, box_color=box_color,
+    )
 
 
-def run_on_path(path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
+def run_on_path(path, predictor, metadata, output_dir, timestamp, show, color=None, mask_alpha=0.8, box_color=None):
     if os.path.isfile(path):
         ext = os.path.splitext(path)[1].lower()
         if ext in IMAGE_EXTENSIONS:
-            run_on_image_file(path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
+            run_on_image_file(path, predictor, metadata, output_dir, timestamp, show, color, mask_alpha, box_color)
         elif ext in VIDEO_EXTENSIONS:
-            run_on_video_file(path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
+            run_on_video_file(path, predictor, metadata, output_dir, timestamp, show, color, mask_alpha, box_color)
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
         return
@@ -202,9 +226,9 @@ def run_on_path(path, predictor, metadata, output_dir, timestamp, show, instance
                 continue
             ext = os.path.splitext(entry)[1].lower()
             if ext in IMAGE_EXTENSIONS:
-                run_on_image_file(entry_path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
+                run_on_image_file(entry_path, predictor, metadata, output_dir, timestamp, show, color, mask_alpha, box_color)
             elif ext in VIDEO_EXTENSIONS:
-                run_on_video_file(entry_path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
+                run_on_video_file(entry_path, predictor, metadata, output_dir, timestamp, show, color, mask_alpha, box_color)
         return
 
     raise FileNotFoundError(f"Path not found: {path}")
@@ -218,12 +242,8 @@ def main(args):
     os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    instance_mode = ColorMode.IMAGE
-    jittering = True
-    if args.color is not None:
-        metadata = apply_single_color(metadata, cfg.MODEL.ROI_HEADS.NUM_CLASSES, args.color)
-        instance_mode = ColorMode.SEGMENTATION
-        jittering = False
+    color = tuple(c / 255 for c in args.color) if args.color is not None else None
+    box_color = tuple(c / 255 for c in args.box_color) if args.box_color is not None else None
 
     if args.webcam is not None:
         cap = cv2.VideoCapture(args.webcam)
@@ -231,12 +251,12 @@ def main(args):
             raise RuntimeError(f"Could not open webcam index {args.webcam}")
         process_stream(
             cap, predictor, metadata, output_path=None, show=not args.no_display,
-            instance_mode=instance_mode, jittering=jittering,
+            color=color, mask_alpha=args.mask_alpha, box_color=box_color,
         )
     else:
         run_on_path(
             args.path, predictor, metadata, args.output_dir, timestamp, show=not args.no_display,
-            instance_mode=instance_mode, jittering=jittering,
+            color=color, mask_alpha=args.mask_alpha, box_color=box_color,
         )
 
 
@@ -331,6 +351,23 @@ def parse_arguments():
         help="Draw all detections in a single fixed RGB color (0-255 each), e.g. "
              "--color 0 255 0, instead of random per-instance colors. Avoids the "
              "flickering/strobing effect random colors cause on video output."
+    )
+    parser.add_argument(
+        "--mask_alpha",
+        type=float,
+        default=0.8,
+        help="Opacity of the mask fill when --color is set (0-1, default: 0.8). Has no "
+             "effect without --color."
+    )
+    parser.add_argument(
+        "--box_color",
+        type=int,
+        nargs=3,
+        metavar=("R", "G", "B"),
+        default=None,
+        help="Draw all bounding boxes in a single fixed RGB color (0-255 each), separate from "
+             "--color (which colors masks/labels), e.g. --box_color 255 255 255 so the box "
+             "outline stands out against the mask fill."
     )
     parser.add_argument(
         "--no_display",
