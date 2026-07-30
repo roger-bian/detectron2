@@ -8,8 +8,8 @@ from tqdm import tqdm
 
 from detectron2.config import get_cfg
 from detectron2.engine import DefaultPredictor
-from detectron2.utils.visualizer import Visualizer
-from detectron2.data import MetadataCatalog
+from detectron2.utils.visualizer import Visualizer, ColorMode
+from detectron2.data import MetadataCatalog, Metadata
 from detectron2 import model_zoo
 
 
@@ -70,11 +70,23 @@ def get_metadata(args, cfg, used_default_weights):
     return None
 
 
+def apply_single_color(metadata, num_classes, color):
+    # Metadata objects registered in MetadataCatalog forbid overwriting an
+    # already-set attribute (e.g. COCO metadata ships with its own thing_colors),
+    # so build a fresh, unregistered Metadata instead of mutating a shared one.
+    single_color_metadata = Metadata()
+    thing_classes = metadata.get("thing_classes", None) if metadata is not None else None
+    if thing_classes is not None:
+        single_color_metadata.thing_classes = thing_classes
+    single_color_metadata.thing_colors = [tuple(color)] * max(num_classes, 1)
+    return single_color_metadata
+
+
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm"}
 
 
-def process_image(image_path, predictor, metadata, output_path, show):
+def process_image(image_path, predictor, metadata, output_path, show, instance_mode=ColorMode.IMAGE, jittering=True):
     image = cv2.imread(image_path)
     if image is None:
         print(f"Skipping unreadable image: {image_path}")
@@ -83,8 +95,8 @@ def process_image(image_path, predictor, metadata, output_path, show):
     outputs = predictor(image)
     instances = outputs["instances"].to("cpu")
 
-    visualizer = Visualizer(image[:, :, ::-1], metadata=metadata, scale=1)
-    out = visualizer.draw_instance_predictions(instances)
+    visualizer = Visualizer(image[:, :, ::-1], metadata=metadata, scale=1, instance_mode=instance_mode)
+    out = visualizer.draw_instance_predictions(instances, jittering=jittering)
     result_image = out.get_image()[:, :, ::-1]
 
     cv2.imwrite(output_path, result_image)
@@ -99,7 +111,7 @@ def process_image(image_path, predictor, metadata, output_path, show):
     print(f"Saved output image to: {output_path}")
 
 
-def process_stream(cap, predictor, metadata, output_path, show):
+def process_stream(cap, predictor, metadata, output_path, show, instance_mode=ColorMode.IMAGE, jittering=True):
     writer = None
     if output_path is not None:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -130,8 +142,8 @@ def process_stream(cap, predictor, metadata, output_path, show):
             outputs = predictor(frame)
             instances = outputs["instances"].to("cpu")
 
-            visualizer = Visualizer(frame[:, :, ::-1], metadata=metadata, scale=1)
-            out = visualizer.draw_instance_predictions(instances)
+            visualizer = Visualizer(frame[:, :, ::-1], metadata=metadata, scale=1, instance_mode=instance_mode)
+            out = visualizer.draw_instance_predictions(instances, jittering=jittering)
             result_frame = out.get_image()[:, :, ::-1]
 
             if writer is not None:
@@ -155,29 +167,29 @@ def process_stream(cap, predictor, metadata, output_path, show):
         print(f"Saved output video to: {output_path}")
 
 
-def run_on_video_file(video_path, predictor, metadata, output_dir, timestamp, show):
+def run_on_video_file(video_path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video file: {video_path}")
     video_name = os.path.splitext(os.path.basename(video_path))[0]
     output_path = os.path.join(output_dir, f"{video_name}_{timestamp}.mp4")
-    process_stream(cap, predictor, metadata, output_path, show=show)
+    process_stream(cap, predictor, metadata, output_path, show=show, instance_mode=instance_mode, jittering=jittering)
 
 
-def run_on_image_file(image_path, predictor, metadata, output_dir, timestamp, show):
+def run_on_image_file(image_path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
     image_name = os.path.splitext(os.path.basename(image_path))[0]
     ext = os.path.splitext(image_path)[1]
     output_path = os.path.join(output_dir, f"{image_name}_{timestamp}{ext}")
-    process_image(image_path, predictor, metadata, output_path, show=show)
+    process_image(image_path, predictor, metadata, output_path, show=show, instance_mode=instance_mode, jittering=jittering)
 
 
-def run_on_path(path, predictor, metadata, output_dir, timestamp, show):
+def run_on_path(path, predictor, metadata, output_dir, timestamp, show, instance_mode=ColorMode.IMAGE, jittering=True):
     if os.path.isfile(path):
         ext = os.path.splitext(path)[1].lower()
         if ext in IMAGE_EXTENSIONS:
-            run_on_image_file(path, predictor, metadata, output_dir, timestamp, show)
+            run_on_image_file(path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
         elif ext in VIDEO_EXTENSIONS:
-            run_on_video_file(path, predictor, metadata, output_dir, timestamp, show)
+            run_on_video_file(path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
         else:
             raise ValueError(f"Unsupported file extension: {ext}")
         return
@@ -190,9 +202,9 @@ def run_on_path(path, predictor, metadata, output_dir, timestamp, show):
                 continue
             ext = os.path.splitext(entry)[1].lower()
             if ext in IMAGE_EXTENSIONS:
-                run_on_image_file(entry_path, predictor, metadata, output_dir, timestamp, show)
+                run_on_image_file(entry_path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
             elif ext in VIDEO_EXTENSIONS:
-                run_on_video_file(entry_path, predictor, metadata, output_dir, timestamp, show)
+                run_on_video_file(entry_path, predictor, metadata, output_dir, timestamp, show, instance_mode, jittering)
         return
 
     raise FileNotFoundError(f"Path not found: {path}")
@@ -206,13 +218,26 @@ def main(args):
     os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    instance_mode = ColorMode.IMAGE
+    jittering = True
+    if args.color is not None:
+        metadata = apply_single_color(metadata, cfg.MODEL.ROI_HEADS.NUM_CLASSES, args.color)
+        instance_mode = ColorMode.SEGMENTATION
+        jittering = False
+
     if args.webcam is not None:
         cap = cv2.VideoCapture(args.webcam)
         if not cap.isOpened():
             raise RuntimeError(f"Could not open webcam index {args.webcam}")
-        process_stream(cap, predictor, metadata, output_path=None, show=not args.no_display)
+        process_stream(
+            cap, predictor, metadata, output_path=None, show=not args.no_display,
+            instance_mode=instance_mode, jittering=jittering,
+        )
     else:
-        run_on_path(args.path, predictor, metadata, args.output_dir, timestamp, show=not args.no_display)
+        run_on_path(
+            args.path, predictor, metadata, args.output_dir, timestamp, show=not args.no_display,
+            instance_mode=instance_mode, jittering=jittering,
+        )
 
 
 def parse_arguments():
@@ -296,6 +321,16 @@ def parse_arguments():
         default=None,
         help="Class names in label order, used to annotate detections (e.g. --class_names screw). "
              "Not needed when using default COCO-pretrained weights; COCO class names are used automatically."
+    )
+    parser.add_argument(
+        "--color",
+        type=int,
+        nargs=3,
+        metavar=("R", "G", "B"),
+        default=None,
+        help="Draw all detections in a single fixed RGB color (0-255 each), e.g. "
+             "--color 0 255 0, instead of random per-instance colors. Avoids the "
+             "flickering/strobing effect random colors cause on video output."
     )
     parser.add_argument(
         "--no_display",

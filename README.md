@@ -87,6 +87,9 @@ is not saved).
 --class_names: class names in label order, used to annotate detections and to infer
                NUM_CLASSES when using a model zoo config with custom-trained weights.
                Not needed when using default COCO-pretrained weights.
+--color: draw all detections in a single fixed RGB color (0-255 each), e.g. --color 0 255 0,
+         instead of random per-instance colors. Avoids the flickering/strobing effect random
+         colors cause on video output.
 --no_display: do not show a live preview window while processing
 --cpu: force inference on CPU even if a GPU is available
 ```
