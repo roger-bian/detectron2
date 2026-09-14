@@ -10,10 +10,38 @@ from detectron2.evaluation import COCOEvaluator
 from detectron2.engine.hooks import HookBase
 from detectron2.utils.logger import log_every_n_seconds
 from detectron2.utils.events import EventStorage
-from detectron2.data import DatasetMapper, build_detection_test_loader
+from detectron2.data import (
+    DatasetMapper,
+    build_detection_test_loader,
+    build_detection_train_loader,
+    detection_utils,
+)
 import detectron2.utils.comm as comm
 
 logger = logging.getLogger("detectron2")
+
+
+class DatasetMapperWithNegatives(DatasetMapper):
+    """DatasetMapper that accepts images with no annotations (negative examples).
+
+    train.py enables INPUT.CROP.ENABLED, which makes the stock mapper recompute
+    gt_boxes from gt_masks after cropping. But annotations_to_instances only
+    creates the gt_masks field when there is at least one annotation, so an image
+    with an empty annotation list raises
+
+        AttributeError: Cannot find field 'gt_masks' in the given Instances!
+
+    Such an image needs no box recomputation, so build its empty Instances
+    directly and skip that step.
+    """
+
+    def _transform_annotations(self, dataset_dict, transforms, image_shape):
+        if dataset_dict.get("annotations"):
+            return super()._transform_annotations(dataset_dict, transforms, image_shape)
+        dataset_dict.pop("annotations", None)
+        dataset_dict["instances"] = detection_utils.annotations_to_instances(
+            [], image_shape, mask_format=self.instance_mask_format
+        )
 
 class LossEvalHook(HookBase):
     def __init__(self, eval_period, model, data_loader):
@@ -94,6 +122,28 @@ class BestCheckpointAndEarlyStopHook(HookBase):
         self.best_value = -math.inf
         self.bad_epochs = 0
 
+    def _save_weights_only(self, trainer):
+        """Write {file_prefix}.pth containing only the model weights.
+
+        DetectionCheckpointer.save() also stores the trainer state (optimizer
+        and LR scheduler), which roughly doubles the file size. The best
+        checkpoint is only ever used for inference, so write the same
+        {"model": state_dict} structure detectron2 writes, minus that extra.
+        It still loads through cfg.MODEL.WEIGHTS / DetectionCheckpointer.load().
+        """
+        checkpointer = trainer.checkpointer
+        if not checkpointer.save_dir or not checkpointer.save_to_disk:
+            return
+
+        # checkpointer.model is already unwrapped from DistributedDataParallel.
+        data = {"model": checkpointer.model.state_dict()}
+        save_file = os.path.join(checkpointer.save_dir, f"{self.file_prefix}.pth")
+        with checkpointer.path_manager.open(save_file, "wb") as f:
+            torch.save(data, f)
+
+        # Deliberately not tag_last_checkpoint(): this file carries no optimizer
+        # state, so it must not become the target that resume_or_load() picks up.
+
     def after_step(self):
         trainer = self.trainer
         next_iter = trainer.iter + 1
@@ -126,7 +176,7 @@ class BestCheckpointAndEarlyStopHook(HookBase):
                 f"[Best+EarlyStop] New best {self.metric_name}: {current:.4f}"
             )
             
-            trainer.checkpointer.save(self.file_prefix)
+            self._save_weights_only(trainer)
             logger.info(
                 f"[Best+EarlyStop] New best checkpoint saved: {self.file_prefix}.pth"
             )
@@ -188,6 +238,13 @@ class MyTrainer(DefaultTrainer):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         return COCOEvaluator(dataset_name, cfg, True, output_folder)
+
+    @classmethod
+    def build_train_loader(cls, cfg):
+        # Default mapper, but tolerating annotation-less negative examples.
+        return build_detection_train_loader(
+            cfg, mapper=DatasetMapperWithNegatives(cfg, True)
+        )
     
     
     def build_hooks(self):
@@ -202,7 +259,7 @@ class MyTrainer(DefaultTrainer):
                 data_loader=build_detection_test_loader(
                     self.cfg,
                     self.cfg.DATASETS.TEST[0],
-                    DatasetMapper(self.cfg, True)
+                    DatasetMapperWithNegatives(self.cfg, True)
                 )
             )
         )

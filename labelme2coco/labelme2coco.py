@@ -29,14 +29,27 @@ def main():
     parser.add_argument("--input_dir", help="input annotated directory", required=True)
     parser.add_argument("--output_dir", help="output dataset directory", required=True)
     parser.add_argument("--labels", help="labels file", required=True)
+    parser.add_argument(
+        "--image_format",
+        help="output image format",
+        choices=["jpeg", "png"],
+        default="jpeg",
+    )
     parser.add_argument("--noviz", help="no visualization", action="store_true")
     args = parser.parse_args()
+
+    # jpeg -> JPEGImages/*.jpg, png -> PNGImages/*.png (lossless, matching
+    # PNG sources). The annotations file is annotations.json either way.
+    image_dir, image_ext = {
+        "jpeg": ("JPEGImages", ".jpg"),
+        "png": ("PNGImages", ".png"),
+    }[args.image_format]
 
     if osp.exists(args.output_dir):
         print("Output directory already exists:", args.output_dir)
         sys.exit(1)
     os.makedirs(args.output_dir)
-    os.makedirs(osp.join(args.output_dir, "JPEGImages"))
+    os.makedirs(osp.join(args.output_dir, image_dir))
     if not args.noviz:
         os.makedirs(osp.join(args.output_dir, "Visualization"))
     print("Creating dataset:", args.output_dir)
@@ -95,7 +108,7 @@ def main():
         label_file = labelme.LabelFile(filename=filename)
 
         base = osp.splitext(osp.basename(filename))[0]
-        out_img_file = osp.join(args.output_dir, "JPEGImages", base + ".jpg")
+        out_img_file = osp.join(args.output_dir, image_dir, base + image_ext)
 
         img = labelme.utils.img_data_to_arr(label_file.imageData)
         # img = img[:,:,:3]
@@ -193,6 +206,8 @@ def main():
                     font_size=15,
                     line_width=2,
                 )
+            # Previews stay JPEG whatever --image_format is; they are only for
+            # eyeballing the conversion, not for training.
             out_viz_file = osp.join(args.output_dir, "Visualization", base + ".jpg")
             imgviz.io.imsave(out_viz_file, viz)
 

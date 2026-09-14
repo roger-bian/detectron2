@@ -1,0 +1,55 @@
+[project]
+name = "detectron2-training"
+version = "0.1.0"
+description = "Detectron2 instance-segmentation training and inference for panel/screw datasets"
+requires-python = "==3.10.*"
+
+dependencies = [
+    # Pinned: the prebuilt detectron2 wheel is compiled against this exact
+    # torch/torchvision/CUDA combination, so these three move together.
+    # https://github.com/facebookresearch/detectron2/discussions/5200
+    "detectron2==0.6+18f6958pt2.8.0cu128",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+
+    "matplotlib==3.9.2",
+    "notebook==7.4.5",
+    "opencv-python==4.12.0.88",
+    "labelme==5.11.4",
+
+    # Imported directly by repo code, previously relied on as transitives.
+    # Left unpinned; uv.lock holds the exact versions.
+    "imgviz",      # labelme2coco/labelme2coco.py
+    "numpy",       # src/trainer.py, labelme2coco/
+    "pillow",      # labelme2coco/tools/draw_bbox.py
+    "pycocotools", # labelme2coco/labelme2coco.py
+    "tqdm",        # inference.py, labelme2coco/tools/
+    "pyyaml",      # src/settings.py
+
+    # detectron2 declares shapely only under its "all" extra, but polygon
+    # instance-segmentation training needs it: cropping calls
+    # CropTransform.apply_polygons, which imports shapely.
+    "shapely",
+
+    # detectron2 0.6's model_zoo imports pkg_resources, which setuptools
+    # removed in 82.0.0. Arrives transitively via triton, so it must be
+    # capped or `import detectron2.model_zoo` fails. 80+ prints a harmless
+    # deprecation warning; silencing it would mean pinning back to 79.
+    "setuptools<82",
+]
+
+[tool.uv]
+# train.py does `from src.trainer import ...` relative to the working
+# directory; there is no installable package here.
+package = false
+
+# detectron2 comes from a third-party wheel index. `explicit = true` keeps
+# that index reserved for detectron2 alone so it cannot shadow PyPI for
+# anything else.
+[[tool.uv.index]]
+name = "torch-packages-builder"
+url = "https://miropsota.github.io/torch_packages_builder"
+explicit = true
+
+[tool.uv.sources]
+detectron2 = { index = "torch-packages-builder" }

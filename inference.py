@@ -1,6 +1,5 @@
 import os
 import datetime
-import argparse
 
 import cv2
 import torch
@@ -11,6 +10,8 @@ from detectron2.engine import DefaultPredictor
 from detectron2.utils.visualizer import Visualizer, _create_text_labels
 from detectron2.data import MetadataCatalog
 from detectron2 import model_zoo
+
+from src.settings import load_settings
 
 
 def resolve_config_and_weights(args):
@@ -50,7 +51,7 @@ def setup_cfg(args):
         print(
             f"Overriding MODEL.ROI_HEADS.NUM_CLASSES: "
             f"{cfg.MODEL.ROI_HEADS.NUM_CLASSES} -> {len(args.class_names)} "
-            f"(to match --class_names)"
+            f"(to match class_names)"
         )
         cfg.MODEL.ROI_HEADS.NUM_CLASSES = len(args.class_names)
     if args.cpu or not torch.cuda.is_available():
@@ -234,156 +235,66 @@ def run_on_path(path, predictor, metadata, output_dir, timestamp, show, color=No
     raise FileNotFoundError(f"Path not found: {path}")
 
 
+WEBCAM = "webcam"
+
+
+def prompt_webcam_device_id():
+    """Ask for a webcam device index. Empty input, or no stdin at all, means 0."""
+    while True:
+        try:
+            reply = input("Enter webcam device id (0 is the default camera): ").strip()
+        except EOFError:
+            print("No input available; using webcam device 0.")
+            return 0
+        if not reply:
+            return 0
+        try:
+            device_id = int(reply)
+        except ValueError:
+            print(f"Not a number: {reply!r}. Enter an integer, or press Enter for 0.")
+            continue
+        if device_id < 0:
+            print(f"Device id must be 0 or greater, got {device_id}.")
+            continue
+        return device_id
+
+
+def open_webcam():
+    device_id = prompt_webcam_device_id()
+    cap = cv2.VideoCapture(device_id)
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open webcam index {device_id}")
+    return cap
+
+
 def main(args):
+    # Resolve the input source before loading the model: the prompt and the
+    # "can this camera be opened" check should not wait on GPU warm-up.
+    use_webcam = str(args.path).strip().lower() == WEBCAM
+    cap = open_webcam() if use_webcam else None
+
     cfg, used_default_weights = setup_cfg(args)
     predictor = DefaultPredictor(cfg)
     metadata = get_metadata(args, cfg, used_default_weights)
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
     color = tuple(c / 255 for c in args.color) if args.color is not None else None
     box_color = tuple(c / 255 for c in args.box_color) if args.box_color is not None else None
 
-    if args.webcam is not None:
-        cap = cv2.VideoCapture(args.webcam)
-        if not cap.isOpened():
-            raise RuntimeError(f"Could not open webcam index {args.webcam}")
+    if use_webcam:
+        # Live preview only: output_path=None, and output_dir is never created.
         process_stream(
             cap, predictor, metadata, output_path=None, show=not args.no_display,
             color=color, mask_alpha=args.mask_alpha, box_color=box_color,
         )
     else:
+        os.makedirs(args.output_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_on_path(
             args.path, predictor, metadata, args.output_dir, timestamp, show=not args.no_display,
             color=color, mask_alpha=args.mask_alpha, box_color=box_color,
         )
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Run a trained detectron2 model on a webcam feed, or on an image/video file "
-                    "or a directory of images/videos, saving the annotated output to the "
-                    "_output directory."
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Either a path to a local config.yaml from a previously trained model "
-             "(e.g. _model/side_panel_screw/v2/config.yaml), or a detectron2 model zoo "
-             "config name (e.g. COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml)."
-    )
-    parser.add_argument(
-        "--weights",
-        type=str,
-        default=None,
-        help="Path to model weights. Required when --config is a local config.yaml. "
-             "When --config is a model zoo name, defaults to that backbone's pretrained "
-             "COCO weights, or can point to a locally trained .pth using that architecture."
-    )
-
-    source_group = parser.add_mutually_exclusive_group(required=True)
-    source_group.add_argument(
-        "--webcam",
-        type=int,
-        nargs="?",
-        const=0,
-        default=None,
-        help="Run live detection on a webcam. Optionally provide a camera index (default: 0)."
-    )
-    source_group.add_argument(
-        "--path",
-        type=str,
-        default=None,
-        help="Path to an input image or video file, or a directory containing images and/or "
-             "videos to run detection on (subdirectories are not scanned)."
-    )
-
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="_output",
-        help="Directory to save the annotated output video (default: _output)"
-    )
-    parser.add_argument(
-        "--score_thresh",
-        type=float,
-        default=0.5,
-        help="Minimum score threshold for detections (default: 0.5)"
-    )
-    parser.add_argument(
-        "--nms_thresh",
-        type=float,
-        default=0.5,
-        help="Non-maximum suppression IoU threshold; overlapping boxes above this are "
-             "merged/suppressed. Lower = stricter (fewer overlapping boxes kept), "
-             "higher = more permissive (default: 0.5)"
-    )
-    parser.add_argument(
-        "--min_size_test",
-        type=int,
-        default=None,
-        help="Size of the shortest image side used at test time (INPUT.MIN_SIZE_TEST). "
-             "Defaults to the value from --config."
-    )
-    parser.add_argument(
-        "--max_size_test",
-        type=int,
-        default=None,
-        help="Maximum size of the longest image side used at test time (INPUT.MAX_SIZE_TEST). "
-             "Defaults to the value from --config."
-    )
-    parser.add_argument(
-        "--class_names",
-        type=str,
-        nargs="+",
-        default=None,
-        help="Class names in label order, used to annotate detections (e.g. --class_names screw). "
-             "Not needed when using default COCO-pretrained weights; COCO class names are used automatically."
-    )
-    parser.add_argument(
-        "--color",
-        type=int,
-        nargs=3,
-        metavar=("R", "G", "B"),
-        default=None,
-        help="Draw all detections in a single fixed RGB color (0-255 each), e.g. "
-             "--color 0 255 0, instead of random per-instance colors. Avoids the "
-             "flickering/strobing effect random colors cause on video output."
-    )
-    parser.add_argument(
-        "--mask_alpha",
-        type=float,
-        default=0.8,
-        help="Opacity of the mask fill when --color is set (0-1, default: 0.8). Has no "
-             "effect without --color."
-    )
-    parser.add_argument(
-        "--box_color",
-        type=int,
-        nargs=3,
-        metavar=("R", "G", "B"),
-        default=None,
-        help="Draw all bounding boxes in a single fixed RGB color (0-255 each), separate from "
-             "--color (which colors masks/labels), e.g. --box_color 255 255 255 so the box "
-             "outline stands out against the mask fill."
-    )
-    parser.add_argument(
-        "--no_display",
-        action="store_true",
-        help="Do not show a live preview window while processing"
-    )
-    parser.add_argument(
-        "--cpu",
-        action="store_true",
-        help="Force inference on CPU even if a GPU is available"
-    )
-
-    args = parser.parse_args()
-    return args
-
-
 if __name__ == "__main__":
-    args = parse_arguments()
+    args = load_settings("inference")
     main(args)

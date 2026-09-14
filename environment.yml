@@ -1,17 +1,45 @@
+# Mirrors [project.dependencies] in pyproject.toml.
+# Conda fallback; with uv, run `uv sync` instead (uses uv.lock).
 name: detectron2
 channels:
   - defaults
 dependencies:
   - python=3.10.15
   - pip:
+      # detectron2 prebuilt wheels:
+      # https://github.com/facebookresearch/detectron2/discussions/5200
       - --extra-index-url https://miropsota.github.io/torch_packages_builder
+      # Windows PyPI torch wheels are CPU-only, so this conda/Windows path
+      # needs the CUDA index. Not required in pyproject.toml, where the Linux
+      # PyPI torch 2.8.0 wheel is already the cu128 build.
       - --extra-index-url https://download.pytorch.org/whl/cu128
+
+      # The detectron2 wheel is compiled against this exact torch/torchvision/
+      # CUDA combination, so these three move together.
       - detectron2==0.6+18f6958pt2.8.0cu128
       - torch==2.8.0
       - torchvision==0.23.0
+
       - matplotlib==3.9.2
       - notebook==7.4.5
       - opencv-python==4.12.0.88
       - labelme==5.11.4
-      - tqdm==4.68.4
-prefix: C:\Users\roger\anaconda3\envs\detectron2
+
+      # Imported directly by repo code.
+      - imgviz
+      - numpy
+      - pillow
+      - pycocotools
+      - tqdm
+      - pyyaml
+
+      # detectron2 declares shapely only under its "all" extra, but polygon
+      # instance-segmentation training needs it: cropping calls
+      # CropTransform.apply_polygons, which imports shapely.
+      - shapely
+
+      # detectron2 0.6's model_zoo imports pkg_resources, which setuptools
+      # removed in 82.0.0. Arrives transitively via triton, so it must be
+      # capped or `import detectron2.model_zoo` fails. 80+ prints a harmless
+      # deprecation warning; silencing it would mean pinning back to 79.
+      - setuptools<82

@@ -1,0 +1,123 @@
+# Per-run settings for train.py and inference.py.
+#
+# Edit the section for the script you are running, then run it with no
+# arguments:  python train.py   /   python inference.py
+#
+# To keep several configurations side by side, copy this file and pass the
+# copy as the first argument:  python train.py experiments/lr_test.yaml
+#
+# Every key must be present. Unknown or missing keys are an error, so a typo
+# fails loudly instead of being silently ignored.
+
+train:
+  # Dataset folder name under _data/
+  dataset_name: smm4-1
+
+  # Dataset version, matching _data/{dataset_name}/coco/{train,val}_{version}
+  version: v2
+
+  # Number of labels in labels.txt, EXCLUDING __ignore__
+  num_classes: 2
+
+  # Images per training batch. Also sets the learning rate: train.py derives
+  # base_lr from this by the linear scaling rule (0.02 at batch 16), so raising
+  # or lowering it keeps the effective training rate the same.
+  # Memory on this machine: ~1026 MiB per image + 428 MiB fixed, so batch 4
+  # needs ~4.5 GB and fits alongside a desktop session on an 8 GB card.
+  # Batch 8 needs ~8.6 GB and does not fit on 8 GB at all.
+  batch_size: 4
+
+  # Number of passes over the training set. This is a ceiling, not a target:
+  # training stops early once segm/AP has not improved by 0.002 for 6
+  # consecutive evaluations (see BestCheckpointAndEarlyStopHook in
+  # src/trainer.py), which at the eval_period below is 30 epochs of no gain.
+  epochs: 300
+
+  # Evaluate the validation set every N iterations.
+  # 201 training images at batch_size 4 is ~50 iterations per epoch, so this is
+  # ~5 epochs. Re-derive it if batch_size changes.
+  eval_period: 250
+
+  # Save a checkpoint every N iterations
+  checkpoint_period: 1000
+
+  # Backbone architecture pulled from the detectron2 model zoo. Used when
+  # `config` below is null. This chooses the model; `config` resumes a run.
+  config_file: COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml
+
+  # Resume from a previously trained model instead of the model zoo backbone:
+  # path to that run's config.yaml, e.g. _model/side_panel/v3/config.yaml.
+  # null = start from `config_file` above with COCO-pretrained weights.
+  config: null
+
+  # Path to pre-trained weights, e.g. _model/side_panel/v3/model_best.pth.
+  # null = use the model zoo's COCO-pretrained weights.
+  weights: null
+
+inference:
+  # Either a path to a local config.yaml from a previously trained model
+  # (e.g. _model/side_panel/v3/config.yaml), or a detectron2 model zoo config
+  # name (e.g. COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml).
+  config: _model/smm4-1/v1/config.yaml
+
+  # Path to model weights. Required when `config` is a local config.yaml.
+  # When `config` is a model zoo name, null means that backbone's pretrained
+  # COCO weights; it can also point to a locally trained .pth using that
+  # architecture.
+  weights: _model/smm4-1/v1/model_best.pth
+
+  # Input source, one of:
+  #   - a path to an image or video file
+  #   - a path to a directory of images and/or videos (not scanned recursively)
+  #   - the word `webcam`, to run live detection on a camera; you are then
+  #     prompted for the device id (press Enter, or give no input at all, for
+  #     the default camera 0)
+  # Webcam runs are preview-only: nothing is written to output_dir.
+  path: _input
+
+  # Directory to save the annotated output
+  output_dir: _output
+
+  # Minimum score threshold for detections.
+  # 0.9 for the smm4-1 model: at 0.5 it emits duplicate lower-confidence
+  # masks over the same part (only 2 of 7 held-out images came back with a
+  # single ear); at 0.9 all 7 do, and no true detection is lost until ~0.95.
+  score_thresh: 0.9
+
+  # Non-maximum suppression IoU threshold; overlapping boxes above this are
+  # merged/suppressed. Lower = stricter (fewer overlapping boxes kept),
+  # higher = more permissive.
+  nms_thresh: 0.5
+
+  # Size of the shortest image side used at test time (INPUT.MIN_SIZE_TEST).
+  # null = use the value from `config`.
+  min_size_test: null
+
+  # Maximum size of the longest image side used at test time
+  # (INPUT.MAX_SIZE_TEST). null = use the value from `config`.
+  max_size_test: null
+
+  # Class names in label order, used to annotate detections, e.g.
+  # [mask, screw, hook]. null = not set; with default COCO-pretrained weights
+  # the COCO class names are used automatically.
+  class_names: [ear, frame]
+
+  # Draw all detections in a single fixed RGB color, [R, G, B] each 0-255,
+  # e.g. [0, 255, 0], instead of random per-instance colors. Avoids the
+  # flickering/strobing effect random colors cause on video output.
+  # null = random per-instance colors.
+  color: null
+
+  # Opacity of the mask fill when `color` is set (0-1). No effect without it.
+  mask_alpha: 0.8
+
+  # Draw all bounding boxes in a single fixed RGB color, [R, G, B] each 0-255,
+  # separate from `color` (which colors masks/labels), e.g. [255, 255, 255] so
+  # the box outline stands out against the mask fill. null = same as `color`.
+  box_color: null
+
+  # Do not show a live preview window while processing
+  no_display: false
+
+  # Force inference on CPU even if a GPU is available
+  cpu: false
