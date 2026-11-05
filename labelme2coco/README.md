@@ -1,37 +1,38 @@
-### Make sure labelme in installed
+### Normal use: `prepare_dataset.py`
+
+You do not usually run this converter yourself. `prepare_dataset.py` at the
+repo root checks every split of a dataset and calls it to build the next
+numbered version:
+
 ```
-pip install labelme
+python prepare_dataset.py {dataset_name}
 ```
 
-### Update `labels.txt`
-Update `labels.txt` to include all labels.
-Leave the first `__ignore__` label as-is.
+See "Prepare a dataset" in the top-level README.
 
+### Converting a single folder
 
-### Convert command
+For a one-off conversion of one folder of labelme JSON outside the
+`_data/{dataset_name}/` layout:
+
 ```
 # It generates:
-#   - data_dataset_coco/JPEGImages   (or PNGImages, see --image_format)
-#   - data_dataset_coco/Visualization
-#   - data_dataset_coco/annotations.json
-
+#   - {output_folder}/JPEGImages   (or PNGImages, see --image_format)
+#   - {output_folder}/Visualization
+#   - {output_folder}/annotations.json
 
 python ./labelme2coco/labelme2coco.py \
   --input_dir {input_folder} \
   --output_dir {output_folder} \
-  --labels labelme2coco/labels.txt \
+  --labels {labels.txt} \
   --image_format jpeg
 ```
+
+`--labels` is a label list with `__ignore__` first, one label per line.
+`--output_dir` must not exist yet. Unlike `prepare_dataset.py`, this does no
+checks: shapes whose label is missing from the label list are dropped silently.
 
 `--image_format jpeg` (the default) writes `JPEGImages/*.jpg`;
 `--image_format png` writes `PNGImages/*.png`, which is lossless and so keeps
 PNG sources pixel-for-pixel, at roughly 10x the disk space. The annotations
 file is `annotations.json` either way, and `Visualization/` is always JPEG.
-
-#### Example
-```
-python ./labelme2coco/labelme2coco.py \
-  --input_dir ./_data/screw/labelme/train \
-  --output_dir ./_data/screw/coco/train_v1 \
-  --labels labelme2coco/labels.txt
-```

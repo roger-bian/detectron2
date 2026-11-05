@@ -2,8 +2,9 @@
 
 Train and run [detectron2](https://github.com/facebookresearch/detectron2)
 Mask R-CNN instance-segmentation models on custom datasets. The workflow is:
-annotate in [labelme](https://github.com/wkentaro/labelme) → convert to COCO
-format → train → run inference on images, video, or a webcam.
+annotate in [labelme](https://github.com/wkentaro/labelme) → build a versioned
+COCO dataset with one command → train → run inference on images, video, or a
+webcam.
 
 ## Setup
 
@@ -45,19 +46,26 @@ conda activate detectron2
 _data/                      # datasets — see _data/README.md
 └── {dataset_name}/
     ├── labels.txt          # label list, "__ignore__" first
-    ├── labelme/{train,val}/ # annotations + source images
-    └── coco/{train,val}_{version}/
-        ├── JPEGImages/     # or PNGImages/, per --image_format
-        ├── Visualization/  # annotated previews, for eyeballing the conversion
-        └── annotations.json
+    ├── labelme/            # what you edit: images + labelme JSON
+    │   ├── train/
+    │   ├── val/
+    │   └── test/           # optional
+    └── coco/               # built by prepare_dataset.py, never edited by hand
+        └── {split}_v{N}/
+            ├── JPEGImages/     # or PNGImages/, per --image_format
+            ├── Visualization/  # annotated previews, for eyeballing the conversion
+            ├── annotations.json
+            ├── manifest.json   # exactly which files (and hashes) went in
+            └── labels.txt      # copy of the label list used
 _model/{dataset_name}/{version}/   # training output: config.yaml, weights, metrics
 _input/                     # images/videos to run inference on
 _output/                    # annotated inference results
 settings.yaml               # per-run settings for train.py and inference.py
 src/trainer.py              # MyTrainer: validation-loss hook, best-checkpoint + early stop
 src/settings.py             # settings.yaml loader + validation
-labelme2coco/               # labelme → COCO converter, see labelme2coco/README.md
+labelme2coco/               # labelme → COCO converter used by prepare_dataset.py
 inference.ipynb             # notebook equivalent of inference.py
+prepare_dataset.py          # labelme splits → next COCO dataset version
 train.py, inference.py      # entry points
 ```
 
@@ -67,17 +75,21 @@ gitignored.
 
 ## Prepare a dataset
 
-### 1. Annotate
+### 1. Create the dataset folder
 
-Annotate images in labelme and save the JSON next to each image, split into
-`_data/{dataset_name}/labelme/train/` and `.../val/`. The converter reads pixels
-from `imageData` when present and otherwise falls back to the `imagePath` file
-beside the JSON, so either labelme save style works.
+Copy the template and rename it:
 
-### 2. Write a label list
+```
+cp -r "_data/_{dataset_name}_example" _data/my_dataset
+```
 
-Create `_data/{dataset_name}/labels.txt`, one label per line, with `__ignore__`
-first:
+It contains `labels.txt` and empty `labelme/train/`, `val/`, and `test/`
+folders. A dataset can also be nested, e.g. `_data/smm4-1/water_drops`; the
+dataset name is then `smm4-1/water_drops` everywhere.
+
+### 2. Write the label list
+
+Edit `_data/my_dataset/labels.txt`: one label per line, `__ignore__` first:
 
 ```
 __ignore__
@@ -85,37 +97,75 @@ ear
 frame
 ```
 
-Line order fixes the category IDs, so use the same file for both splits. Keeping
-this per dataset (rather than editing the shared `labelme2coco/labels.txt`) is
-the recommended convention — one shared file cannot serve two datasets with
-different labels.
+Line order fixes the category IDs (`ear` = 0, `frame` = 1), so only ever append
+to it. `train.num_classes` is the number of lines after `__ignore__`.
 
-### 3. Convert to COCO
+### 3. Split the images and annotate
 
-Run once per split:
+Put each image in the split it belongs to — `labelme/train/`, `labelme/val/`,
+and optionally `labelme/test/` — then annotate in labelme, saving each JSON next
+to its image. The folder an image is in is its split, so to move an image to
+another split, move its JSON with it. You can also annotate first and split
+afterwards; only where the files are when you build counts.
+
+- Use polygon, rectangle, or circle shapes. Shapes with the same label and
+  `group_id` become one object (e.g. an object split in two by something in
+  front of it).
+- A **background image** (one with nothing to find, used to suppress false
+  positives) still needs a JSON: open it in labelme and save with no shapes.
+  An image without a JSON counts as not annotated yet and is left out.
+- Label a shape `__ignore__` to keep it in the JSON but out of the dataset.
+- Folders starting with `_` (e.g. `labelme/_unused/`) are ignored.
+
+### 4. Build a dataset version
 
 ```
-python ./labelme2coco/labelme2coco.py \
-  --input_dir ./_data/smm4-1/labelme/train \
-  --output_dir ./_data/smm4-1/coco/train_v1 \
-  --labels ./_data/smm4-1/labels.txt
-
-python ./labelme2coco/labelme2coco.py \
-  --input_dir ./_data/smm4-1/labelme/val \
-  --output_dir ./_data/smm4-1/coco/val_v1 \
-  --labels ./_data/smm4-1/labels.txt
+python prepare_dataset.py my_dataset
 ```
 
-Each run writes `JPEGImages/`, `Visualization/`, and `annotations.json`. Pass
-`--noviz` to skip the visualization renders. Shapes whose label is absent from
-`labels.txt` are silently dropped, so check the annotation count if it looks
-low. See [labelme2coco/README.md](labelme2coco/README.md), and
-[Known issues](#known-issues) for the pre-existing-output-directory error.
+This checks every split first and writes nothing if any check fails:
 
-Add `--image_format png` to write `PNGImages/*.png` instead. PNG is lossless,
-so it preserves PNG sources exactly where the default JPEG re-encode does not,
-at roughly 10x the disk space. Either way the annotations file is
-`annotations.json`, and `Visualization/` stays JPEG.
+| check | result |
+|---|---|
+| `train/` or `val/` missing or with no annotated images | error |
+| the same image (by content) in two splits | error — leakage |
+| JSON whose image is missing or unreadable | error |
+| shape the converter cannot handle (`mask`, `line`, `point`, a polygon under 3 points, ...) | error |
+| label not in `labels.txt` (would be dropped) | warning |
+| image with no JSON (not annotated yet, left out) | warning |
+| the same image twice in one split | warning |
+
+It then prints a per-split summary (images, background images, objects per
+label) and converts every split into `coco/{split}_v{N}/`, where N is one more
+than the highest version already there, so `train_vN`, `val_vN`, and `test_vN`
+always belong together. Existing versions are never touched. If a conversion
+fails partway, nothing is left behind.
+
+Each version folder gets a `manifest.json` recording the git commit, the label
+list, and every source file with its SHA-256, so you can always tell exactly
+what a model was trained on, and a copy of `labels.txt`.
+
+| option | effect |
+|---|---|
+| `--dry_run` | run the checks and print the summary, write nothing |
+| `--strict` | treat warnings as errors, e.g. for a final dataset that must be fully annotated |
+| `--image_format png` | write lossless `PNGImages/*.png` instead of `JPEGImages/*.jpg`; keeps PNG sources pixel-for-pixel at ~10x the disk space |
+| `--noviz` | skip the `Visualization/` previews |
+
+### 5. Point training at it
+
+The script ends by printing the values to put in the `train:` section of
+`settings.yaml`:
+
+```
+dataset_name: my_dataset
+version: v1
+num_classes: 2
+```
+
+It does not edit `settings.yaml` itself, so building a version never changes
+what the next training run uses. `train.py` reads `train_vN` and `val_vN`;
+`test_vN` is for your own evaluation.
 
 ## Training
 
@@ -126,7 +176,7 @@ documented inline:
 
 ```
 dataset_name:      dataset folder name under _data/
-version:           dataset version, matching _data/{dataset_name}/coco/{train,val}_{version}
+version:           dataset version built by prepare_dataset.py, e.g. v3 (reads coco/{train,val}_v3)
 num_classes:       number of labels in labels.txt, excluding __ignore__
 batch_size:        images per training batch
 epochs:            passes over the training set
@@ -251,17 +301,7 @@ python inference.py experiments/webcam.yaml
 
 ## Known issues
 
-**labelme2coco refuses an existing `--output_dir`.** It exits with
-`Output directory already exists` — but the dataset template ships
-`coco/{train,val}_v1/.gitkeep`, so those directories exist from the start.
-Convert to a scratch directory and move the contents in, or use a version that
-does not exist yet.
-
 **`labelme2coco/tools/resize_annotated_coco.py` needs `albumentations`,** which
 is not in the dependency list. It is left out deliberately: it pulls
 `opencv-python-headless`, which would install a second `cv2` alongside
 `opencv-python`.
-
-**`image_id` assignment is filesystem-order dependent.** labelme2coco globs
-input files unsorted, so re-converting the same data can assign different image
-IDs. Harmless for training; relevant if you diff two `annotations.json` files.

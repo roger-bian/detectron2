@@ -21,9 +21,9 @@ dependencies = [
     # Left unpinned; uv.lock holds the exact versions.
     "imgviz",      # labelme2coco/labelme2coco.py
     "numpy",       # src/trainer.py, labelme2coco/
-    "pillow",      # labelme2coco/tools/draw_bbox.py
+    "pillow",      # prepare_dataset.py, labelme2coco/tools/draw_bbox.py
     "pycocotools", # labelme2coco/labelme2coco.py
-    "tqdm",        # inference.py, labelme2coco/tools/
+    "tqdm",        # prepare_dataset.py, inference.py, labelme2coco/tools/
     "pyyaml",      # src/settings.py
 
     # detectron2 declares shapely only under its "all" extra, but polygon
