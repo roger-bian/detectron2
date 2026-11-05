@@ -185,10 +185,12 @@ class BestCheckpointAndEarlyStopHook(HookBase):
             self.bad_epochs += 1
             logger.info(
                 f"[Best+EarlyStop] No improvement "
-                f"({self.bad_epochs}/{self.patience})"
+                f"({self.bad_epochs}/{self.patience if self.patience is not None else 'off'})"
             )
 
-        if self.bad_epochs >= self.patience:
+        # patience=None disables early stopping: the full schedule runs, and
+        # model_best.pth is still written whenever the metric improves.
+        if self.patience is not None and self.bad_epochs >= self.patience:
             logger.info(
                 f"[Best+EarlyStop] EARLY STOPPING triggered. "
                 f"Best {self.metric_name}: {self.best_value:.4f}"
@@ -197,6 +199,11 @@ class BestCheckpointAndEarlyStopHook(HookBase):
 
 
 class MyTrainer(DefaultTrainer):
+    def __init__(self, cfg, early_stop_patience=6):
+        # Set before super().__init__(), which calls build_hooks().
+        self.early_stop_patience = early_stop_patience
+        super().__init__(cfg)
+
     def train(self):
         self.should_stop = False  # <-- EARLY STOP FLAG
 
@@ -270,7 +277,7 @@ class MyTrainer(DefaultTrainer):
             BestCheckpointAndEarlyStopHook(
                 metric_name="segm/AP",      # bbox/AP, segm/AP
                 eval_period=self.cfg.TEST.EVAL_PERIOD,
-                patience=6,
+                patience=self.early_stop_patience,
                 min_delta=0.002,
                 file_prefix="model_best"
             )

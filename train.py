@@ -106,7 +106,7 @@ def main(args):
         f"({LR_REFERENCE_LR:g} at batch {LR_REFERENCE_BATCH}); "
         f"LR decay at iterations {list(cfg.SOLVER.STEPS)}"
     )
-    trainer = MyTrainer(cfg)
+    trainer = MyTrainer(cfg, early_stop_patience=args.early_stop_patience)
     trainer.resume_or_load(resume=False)
     trainer.train()
 

@@ -132,6 +132,7 @@ batch_size:        images per training batch
 epochs:            passes over the training set
 eval_period:       evaluate the validation set every N iterations
 checkpoint_period: save a checkpoint every N iterations
+early_stop_patience: evaluations without segm/AP gain before stopping (null = run the full schedule)
 config_file:       model zoo backbone to train from
 config:            resume from a previous run's config.yaml (null = use config_file)
 weights:           pre-trained weights (null = model zoo COCO weights)
@@ -173,8 +174,10 @@ python train.py experiments/lr_test.yaml
 Everything lands in `_model/{dataset_name}/{version}/`: `config.yaml`, periodic
 `model_{iteration}.pth` checkpoints, `metrics.json`, and TensorBoard event
 files. `MyTrainer` also evaluates every `eval_period` iterations and writes
-`model_best.pth` whenever `segm/AP` improves, stopping early after 6 evaluations
-with no gain of at least 0.002.
+`model_best.pth` whenever `segm/AP` improves, stopping early after
+`early_stop_patience` evaluations with no gain of at least 0.002. With
+`early_stop_patience: null` the full schedule runs (so both LR drops happen) and
+detectron2 also writes `model_final.pth` at the last iteration.
 
 This directory is created with `exist_ok=False`, so **re-running with the same
 `version` fails** rather than overwriting. Bump the version or delete the

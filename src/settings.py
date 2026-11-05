@@ -16,7 +16,8 @@ DEFAULT_PATH = "settings.yaml"
 SCHEMA = {
     "train": [
         "dataset_name", "version", "num_classes", "batch_size", "epochs",
-        "eval_period", "checkpoint_period", "config_file", "config", "weights",
+        "eval_period", "checkpoint_period", "early_stop_patience",
+        "config_file", "config", "weights",
     ],
     "inference": [
         "config", "weights", "path", "output_dir", "score_thresh",
@@ -49,6 +50,12 @@ def _check_rgb(name, value):
 
 
 def _validate(section, cfg):
+    if section == "train":
+        p = cfg["early_stop_patience"]
+        if p is not None and (not isinstance(p, int) or isinstance(p, bool) or p < 1):
+            raise SettingsError(
+                f"'early_stop_patience' must be a positive integer or null, got: {p!r}"
+            )
     if section == "inference":
         _check_rgb("color", cfg["color"])
         _check_rgb("box_color", cfg["box_color"])

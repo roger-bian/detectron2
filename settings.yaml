@@ -11,13 +11,13 @@
 
 train:
   # Dataset folder name under _data/
-  dataset_name: smm4-1
+  dataset_name: smm4-1/water_drops
 
   # Dataset version, matching _data/{dataset_name}/coco/{train,val}_{version}
-  version: v2
+  version: v3
 
   # Number of labels in labels.txt, EXCLUDING __ignore__
-  num_classes: 2
+  num_classes: 1
 
   # Images per training batch. Also sets the learning rate: train.py derives
   # base_lr from this by the linear scaling rule (0.02 at batch 16), so raising
@@ -27,19 +27,25 @@ train:
   # Batch 8 needs ~8.6 GB and does not fit on 8 GB at all.
   batch_size: 4
 
-  # Number of passes over the training set. This is a ceiling, not a target:
-  # training stops early once segm/AP has not improved by 0.002 for 6
-  # consecutive evaluations (see BestCheckpointAndEarlyStopHook in
-  # src/trainer.py), which at the eval_period below is 30 epochs of no gain.
-  epochs: 300
+  # Number of passes over the training set. With early stopping on (see
+  # early_stop_patience below) this is a ceiling, not a target. The LR drops at
+  # 67% and 89% of this, so early stopping can end a run before either drop:
+  # water_drops v1 (300 epochs) stopped at epoch 75 and v2 (100) at epoch 50.
+  epochs: 100
 
   # Evaluate the validation set every N iterations.
-  # 201 training images at batch_size 4 is ~50 iterations per epoch, so this is
-  # ~5 epochs. Re-derive it if batch_size changes.
-  eval_period: 250
+  # 76-79 training images at batch_size 4 is ~19-20 iterations per epoch, so
+  # this is ~5 epochs. Re-derive it if batch_size or the dataset changes.
+  eval_period: 95
 
   # Save a checkpoint every N iterations
   checkpoint_period: 1000
+
+  # Stop after this many evaluations in a row without a segm/AP gain of at
+  # least 0.002 (6 at eval_period ~5 epochs is 30 epochs of no gain).
+  # null = no early stopping: the full schedule runs, both LR drops happen, and
+  # model_final.pth is written; model_best.pth is still saved on every gain.
+  early_stop_patience: null
 
   # Backbone architecture pulled from the detectron2 model zoo. Used when
   # `config` below is null. This chooses the model; `config` resumes a run.
